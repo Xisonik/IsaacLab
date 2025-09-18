@@ -2,9 +2,11 @@ import torch
 import math
 import random
 import json
+import numpy as np
 from collections import defaultdict
 from tabulate import tabulate
 import importlib.util
+
 # Импортируем обновленные, векторизованные стратегии
 # from .placement_strategies import PlacementStrategy, GridPlacement, OnSurfacePlacement # Эти классы остаются как в предыдущем ответе
 def import_class_from_path(module_path, class_name):
@@ -46,7 +48,7 @@ class SceneManager:
         self.sizes = torch.zeros(1, self.num_total_objects, 3, device=self.device)
         self.radii = torch.zeros(1, self.num_total_objects, device=self.device)
         self.colors = torch.ones(1, self.num_total_objects, 3, device=self.device)  # По умолчанию белый для не-changeable
-        self.names = []
+        self.names = [] # Список имен для print_graph_info
         self.active = torch.zeros(self.num_envs, self.num_total_objects, dtype=torch.bool, device=self.device)
         self.on_surface_idx = torch.full((self.num_envs, self.num_total_objects), -1, dtype=torch.long, device=self.device)
         self.surface_level = torch.zeros(self.num_envs, self.num_total_objects, dtype=torch.long, device=self.device)
@@ -65,12 +67,8 @@ class SceneManager:
         angle_step = 2 * math.pi / n_angles
         self.discrete_angles = torch.arange(0, 2 * math.pi, angle_step, device=self.device)
         self.candidate_vectors = torch.stack([torch.cos(self.discrete_angles), torch.sin(self.discrete_angles)], dim=1)
-
-        self.clip_descriptors = {}
-        self.full_names = []
         # Assign object IDs based on name
-
-    
+           
     def update_prims(self):
         pass
     
@@ -106,7 +104,6 @@ class SceneManager:
         # for i in env_ids:
         #     self.print_graph_info(i)
         self.chose_active_goal_state(env_ids)
-
 
     def _initialize_object_data(self):
         """Заполняет метаданные об объектах и их начальные/дефолтные состояния."""
@@ -216,7 +213,7 @@ class SceneManager:
             num_providers_to_place = (low_bound + rand_float * (high_bound - low_bound)).long()
         else:
             num_providers_to_place = torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
-        num_floor_obstacles_to_place = torch.randint(0, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
+        num_floor_obstacles_to_place = torch.randint(1, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
         num_static_floor_obstacles_to_place = torch.randint(0, num_static_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_static_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
 
         # 3. Применение стратегий в правильном порядке (сначала поверхности)
@@ -487,243 +484,65 @@ class SceneManager:
             
             for i in env_ids:
                 self.print_graph_info(i)
-    
-    def init_graph_descriptor(self, clip_processor, clip_model):
-        names = ["bowl", "cabinet", "chair", "table"]
-        i = 0.0
-        for name in names:
-            i += 1
-            self.clip_descriptors[name] = torch.tensor(i,device=self.device)
-        print("self.clip_descriptors", self.clip_descriptors)
-        print(f"[ info ] Inited clip_descriptors: {self.clip_descriptors} and full_name: {self.full_names}")
 
-    def get_graph_obs(self, env_ids=None) -> list:
-        """Returns a list of length num_envs, where each element is a list of node dictionaries representing the scene graph.
-        
-        Each node dict has format:
-        {"node_id": int, "clip_descriptor": list[float] (512), "edges_vl_sat": list[dict], "bbox_center": list[float] (3), "bbox_extent": list[float] (3), "class_name": str}
-        
-        edges_vl_sat contains dicts for relations to other nodes: {"id_1": int, "class_name_1": str, "rel_id": int, "id_2": int}
-        Relations are positional only, based on main difference in x/y/z axes from viewpoint (0,0 facing -y).
+    def get_graph_obs(self, env_ids=None):
+        """Returns a dictionary with full tensorized graph representation for observations.
+        - node_features: tensor (num_envs, num_objects, 14) - per object: [pos(3), size(3), radius(1), color(3), id(1), active(1), parent_id(1), level(1)].
+        - edge_features: tensor (num_envs, num_objects, 6) - per possible edge (from child to parent): [exists(1), z_diff(1), level_diff(1), dist(1), color_diff_norm(1), id_diff(1)]; 0 if no edge.
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
+        num_selected = len(env_ids)
         
-        output = []
-        for eid in env_ids:
-            active_mask = self.active[eid]
-            active_indices = torch.nonzero(active_mask).squeeze(-1)
-            num_active = len(active_indices)
-            
-            if num_active == 0:
-                output.append([])
-                continue
-            
-            # Map global indices to local node_ids (0 to num_active-1)
-            node_id_map = {int(active_indices[j]): j for j in range(num_active)}
-            
-            # Gather data for active objects
-            active_pos = self.positions[eid, active_indices]
-            active_sizes = self.sizes[0, active_indices]
-            active_names = [self.names[int(idx)] for idx in active_indices]
-            # Fetch CLIP descriptors based on names
-            active_clip = torch.stack([self.clip_descriptors[name.split('_')[0]] for name in active_names]).to(self.device)
-            
-            env_graph = []
-            for j in range(num_active):
-                idx = active_indices[j]
-                node_id = j
-                clip_desc = active_clip[j].tolist()
-                bbox_center = active_pos[j].tolist()
-                bbox_extent = active_sizes[j].tolist()
-                name = active_names[j]
-                
-                edges = []
-                for k in range(num_active):
-                    if k == j:
-                        continue
-                    
-                    diff = active_pos[k] - active_pos[j]
-                    abs_diff = torch.abs(diff)
-                    max_idx = abs_diff.argmax().item()
-                    
-                    if max_idx == 0:  # x (left/right; assume +x is right)
-                        rel_id = 19 if diff[0] > 0 else 14  # right / left
-                    elif max_idx == 1:  # y (front/behind; facing -y, +y behind, -y front)
-                        rel_id = 1 if diff[1] > 0 else 8  # behind / front
-                    elif max_idx == 2:  # z (higher/lower)
-                        rel_id = 11 if diff[2] > 0 else 15  # higher than / lower than
-                    
-                    edge_dict = {
-                        "id_1": node_id,
-                        "rel_id": rel_id,
-                        "id_2": k
-                    }
-                    edges.append(edge_dict)
-                
-                node_dict = {
-                    "node_id": node_id,
-                    "clip_descriptor": clip_desc,
-                    "edges_vl_sat": edges,
-                    "bbox_center": bbox_center,
-                    "bbox_extent": bbox_extent,
-                }
-                env_graph.append(node_dict)
-            
-            # Выполняем вытеснение неактивных объектов: заполняем до self.num_total_objects копиями случайных активных объектов
-            while len(env_graph) < self.num_total_objects and num_active > 0:
-                new_id = len(env_graph)
-                original_j = random.randint(0, num_active - 1)  # Выбираем из оригинальных активных
-                original_node = env_graph[original_j]
-                
-                new_node = original_node.copy()
-                new_node["node_id"] = new_id
-                new_node["edges_vl_sat"] = []
-                
-                # Добавляем edges между существующими нодами и новой
-                for existing_id in range(new_id):
-                    # Находим edge от existing к original_j и копируем для existing к new_id
-                    for edge in env_graph[existing_id]["edges_vl_sat"]:
-                        if edge["id_2"] == original_j:
-                            new_edge = edge.copy()
-                            new_edge["id_2"] = new_id
-                            env_graph[existing_id]["edges_vl_sat"].append(new_edge)
-                            break
-                    
-                    # Находим edge от original_j к existing и копируем для new_id к existing
-                    for edge in original_node["edges_vl_sat"]:
-                        if edge["id_2"] == existing_id:
-                            new_edge = edge.copy()
-                            new_edge["id_1"] = new_id
-                            new_node["edges_vl_sat"].append(new_edge)
-                            break
-                
-                env_graph.append(new_node)
-            
-            output.append(env_graph)
+        # Select data for env_ids
+        positions = self.positions[env_ids]/10  # (num_selected, num_objects, 3)
+        sizes = self.sizes.expand(num_selected, -1, -1)/10  # (num_selected, num_objects, 3)
+        radii = self.radii.expand(num_selected, -1).unsqueeze(-1)/10  # (num_selected, num_objects, 1)
+        colors = self.colors.expand(num_selected, -1, -1)/10  # (num_selected, num_objects, 3)
+        object_ids = self.object_ids.expand(num_selected, -1).unsqueeze(-1).float()/10  # (num_selected, num_objects, 1)
+        active = self.active[env_ids].unsqueeze(-1).float()/10  # (num_selected, num_objects, 1)
+        parents = self.on_surface_idx[env_ids].unsqueeze(-1).float()/10  # (num_selected, num_objects, 1); -1 for no parent
+        levels = self.surface_level[env_ids].unsqueeze(-1).float()/10  # (num_selected, num_objects, 1)
         
-        return output
-
-    def add_noise_to_graph_obs(self, graph_obs_list: list[list[dict]]) -> list[list[dict]]:
-        """Adds noise to the graph observations: small perturbations to centers and extents mostly,
-        larger rarely (via normal dist with occasional outliers), and rarely change some edge rel_ids.
+        # Node features: concat all per object
+        node_features = torch.cat([
+            positions, sizes, radii, colors, object_ids, active, parents, levels
+        ], dim=-1)  # (num_selected, num_objects, 14)
         
-        Operates vectorized internally for efficiency.
-        """
-        num_envs = len(graph_obs_list)
-        if num_envs == 0:
-            return graph_obs_list
+        # Edge features: per object (potential edge to parent)
+        edge_exists = (parents >= 0).float()  # (num_selected, num_objects, 1)
         
-        # Find max_nodes across envs
-        max_nodes = self.num_total_objects
+        # For valid parents: z_diff = child_z - parent_z
+        valid_mask = (parents >= 0).squeeze(-1)  # (num_selected, num_objects)
+        z_diff = torch.zeros(num_selected, self.num_total_objects, 1, device=self.device)
+        batch_idx = torch.arange(num_selected, device=self.device)[:, None].expand(-1, self.num_total_objects)[valid_mask]
+        obj_idx = torch.arange(self.num_total_objects, device=self.device)[None, :].expand(num_selected, -1)[valid_mask]
+        parent_idx = parents.squeeze(-1)[valid_mask].long()
+        z_diff[valid_mask] = positions[batch_idx, obj_idx, 2:3] - positions[batch_idx, parent_idx, 2:3]
         
-        # Tensors for centers, extents, rel_ids
-        centers = torch.zeros(num_envs, max_nodes, 3, device=self.device)
-        extents = torch.zeros(num_envs, max_nodes, 3, device=self.device)
-        rel_ids = torch.full((num_envs, max_nodes, max_nodes), -1, dtype=torch.long, device=self.device)  # -1 invalid
+        # level_diff = child_level - parent_level (should be 1 usually)
+        level_diff = torch.zeros_like(z_diff)
+        level_diff[valid_mask] = levels[batch_idx, obj_idx] - levels[batch_idx, parent_idx]
         
-        # Fill tensors from list
-        for e, graph in enumerate(graph_obs_list):
-            n = len(graph)
-            if n == 0:
-                continue
-            for j, node in enumerate(graph):
-                centers[e, j] = torch.tensor(node["bbox_center"], device=self.device)
-                extents[e, j] = torch.tensor(node["bbox_extent"], device=self.device)
-                for edge in node["edges_vl_sat"]:
-                    k = edge["id_2"]
-                    rel_ids[e, j, k] = edge["rel_id"]
+        # dist = norm(child_pos_xy - parent_pos_xy)
+        dist = torch.zeros_like(z_diff)
+        child_xy = positions[batch_idx, obj_idx, :2]
+        parent_xy = positions[batch_idx, parent_idx, :2]
+        dist[valid_mask] = torch.norm(child_xy - parent_xy, dim=-1, keepdim=True)
         
-        # Add noise to centers: normal dist, sigma=0.05 mostly, but with 10% chance sigma=0.2, 1% sigma=1.0
-        noise_levels = torch.rand(num_envs, max_nodes, 1, device=self.device)
-        sigmas = torch.where(noise_levels < 0.01, 1.0, torch.where(noise_levels < 0.1, 0.2, 0.05))
-        center_noise = torch.randn(num_envs, max_nodes, 3, device=self.device) * sigmas
-        centers += center_noise
+        # color_diff_norm = norm(child_color - parent_color)
+        color_diff_norm = torch.zeros_like(z_diff)
+        child_color = colors[batch_idx, obj_idx]
+        parent_color = colors[batch_idx, parent_idx]
+        color_diff_norm[valid_mask] = torch.norm(child_color - parent_color, dim=-1, keepdim=True)
         
-        # Add noise to extents: multiplicative, normal around 1, same sigma logic
-        extent_factors = 1 + torch.randn(num_envs, max_nodes, 3, device=self.device) * sigmas
-        extent_factors.clamp_(0.5, 2.0)  # Prevent negative or extreme
-        extents *= extent_factors
+        # id_diff = child_id - parent_id
+        id_diff = torch.zeros_like(z_diff)
+        child_id = object_ids[batch_idx, obj_idx]
+        parent_id = object_ids[batch_idx, parent_idx]
+        id_diff[valid_mask] = child_id - parent_id
         
-        # Rarely change rel_ids: per edge with prob 0.01, set to random rel_id from {1, 8, 11, 14, 15, 19}
-        valid_rel_ids = torch.tensor([1, 8, 11, 14, 15, 19], device=self.device)  # Only positional relations
-        change_mask = (rel_ids >= 0) & (torch.rand_like(rel_ids.float()) < 0.01)
-        random_indices = torch.randint(0, len(valid_rel_ids), change_mask.shape, device=self.device)
-        new_rels = valid_rel_ids[random_indices]
-        rel_ids[change_mask] = new_rels[change_mask]
+        # Edge features: [exists, z_diff, level_diff, dist, color_diff_norm, id_diff]
+        edge_features = torch.cat([edge_exists, z_diff, level_diff, dist, color_diff_norm, id_diff], dim=-1)  # (num_selected, num_objects, 6)
         
-        # Convert back to list[list[dict]]
-        noisy_graph_obs = []
-        for e in range(num_envs):
-            n = len(graph_obs_list[e])
-            if n == 0:
-                noisy_graph_obs.append([])
-                continue
-            env_graph = []
-            for j in range(n):
-                node = graph_obs_list[e][j].copy()  # Copy original
-                node["bbox_center"] = centers[e, j].tolist()
-                node["bbox_extent"] = extents[e, j].tolist()
-                edges = []
-                for k in range(n):
-                    if k == j:
-                        continue
-                    rel_id = int(rel_ids[e, j, k])
-                    if rel_id < 0:
-                        continue
-                    edge_dict = {
-                        "id_1": j,
-                        "rel_id": rel_id,
-                        "id_2": k
-                    }
-                    edges.append(edge_dict)
-                node["edges_vl_sat"] = edges
-                env_graph.append(node)
-            noisy_graph_obs.append(env_graph)
-        
-        return noisy_graph_obs
-
-    def tensorize_graph_obs(self, graph_obs_list: list[list[dict]]) -> dict[str, torch.Tensor]:
-        """
-        Converts a list of scene graphs (one per environment) into a dictionary of batched tensors.
-        ф
-        Args:
-            graph_obs_list: List of length num_envs, each element is a list of node dictionaries for that env.
-        
-        Returns:
-            Dict with keys: 'node_clip' (num_envs, max_nodes, 512),
-                            'node_center' (num_envs, max_nodes, 3),
-                            'node_extent' (num_envs, max_nodes, 3),
-                            'rel_ids' (num_envs, max_nodes, max_nodes, long)
-        """
-        num_envs = len(graph_obs_list)
-        max_nodes = self.num_total_objects
-        clip_dim = 512
-        
-        node_clip = torch.zeros(num_envs, max_nodes, 1, device=self.device)
-        node_center = torch.zeros(num_envs, max_nodes, 3, device=self.device)
-        node_extent = torch.zeros(num_envs, max_nodes, 3, device=self.device)
-        rel_ids = torch.zeros(num_envs, max_nodes, max_nodes, dtype=torch.long, device=self.device)
-        
-        for e in range(num_envs):
-            graph = graph_obs_list[e]
-            n = len(graph)
-            if n == 0:
-                continue
-            
-            for j in range(n):
-                node = graph[j]
-                node_clip[e, j] = torch.tensor(node["clip_descriptor"], device=self.device)
-                node_center[e, j] = torch.tensor(node["bbox_center"], device=self.device)
-                node_extent[e, j] = torch.tensor(node["bbox_extent"], device=self.device)
-                
-                for edge in node["edges_vl_sat"]:
-                    k = edge["id_2"]
-                    rel_id = edge["rel_id"]
-                    rel_ids[e, j, k] = rel_id
-        return {
-            "node_clip": node_clip,
-            "node_center": node_center,
-            "node_extent": node_extent,
-            "rel_ids": rel_ids
-        }
+        return {"node_features": node_features, "edge_features": edge_features}

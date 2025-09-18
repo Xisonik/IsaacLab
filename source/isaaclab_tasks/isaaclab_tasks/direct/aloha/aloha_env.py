@@ -79,10 +79,8 @@ class WheeledRobotEnvCfg(DirectRLEnvCfg):
     observation_space = gym.spaces.Dict({
         "img": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(512 + 3,), dtype=np.float32),
         "graph": gym.spaces.Dict({
-            "node_clip": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 1), dtype=np.float32),
-            "node_center": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 3), dtype=np.float32),
-            "node_extent": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 3), dtype=np.float32),
-            "rel_ids": gym.spaces.Box(low=0, high=25, shape=(num_total_objects, num_total_objects), dtype=np.int64),
+            "node_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 14), dtype=np.float32),
+            "edge_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 6), dtype=np.float32),
         })
     })
     state_space = 0
@@ -145,7 +143,7 @@ class WheeledRobotEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/.*",
         update_period=0.1,
         history_length=1,
-        debug_vis=True,
+        debug_vis=False,
         filter_prim_paths_expr=["/World/envs/env_.*"],
     )
 
@@ -159,7 +157,7 @@ class WheeledRobotEnv(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)
         self._super_init = False
         self.eval = False
-        self.eval_name = "baka"
+        self.eval_name = "CI_prelast"
 
         self.eval_printed = False
         self.scene_manager = SceneManager(self.num_envs, self.config_path, self.device)
@@ -246,11 +244,11 @@ class WheeledRobotEnv(DirectRLEnv):
         self.history_index = 0
         self.history_len = torch.zeros(self.num_envs, device=self.device)
         self._step_update_counter = 0
-        self.mean_radius = 3.3
+        self.mean_radius = 4.3
         self.max_angle_error = torch.pi / 6
         self.cur_angle_error = torch.pi / 12
         self.warm = True
-        self.warm_len = 2500
+        self.warm_len = 5000
         self.without_imitation = self.warm_len / 2
         self._obstacle_update_counter = 0
         self.has_contact = torch.full((self.num_envs,), True, dtype=torch.bool, device=self.device)
@@ -279,7 +277,7 @@ class WheeledRobotEnv(DirectRLEnv):
         self.foult_ep_num = 0
         # Инициализация стеков для хранения успехов (1 - успех, 0 - неуспех)
         self.success_stacks = [[] for _ in range(self.num_envs)]  # Список списков для каждой среды
-        self.max_stack_size = 20  # Максимальный размер стека
+        self.max_stack_size = 50  # Максимальный размер стека
         self.sr_stack_full = False
         self.start_mean_radius = 0
         self.min_level_radius = 0
@@ -300,12 +298,10 @@ class WheeledRobotEnv(DirectRLEnv):
         # сразу после создания scene_manager
         self._material_cache = {}        # key -> material prim path (строка), key = "r_g_b"
         self._applied_color_map = {}     # obj_index (int) -> color_key (str), чтобы не биндим повторно
-        self.scene_manager.init_graph_descriptor(self.clip_processor, self.clip_model)
+
 
     def print_config_info(self):
         print("__________[ CONGIFG INFO ]__________")
-        print(f"|")
-        print(f"| EVAL : {self.eval}")
         print(f"|")
         print(f"| Start mean radius is: {self.mean_radius}")
         print(f"|")
@@ -387,13 +383,8 @@ class WheeledRobotEnv(DirectRLEnv):
         root_ang_vel_w = self._robot.data.root_ang_vel_w[:, 2].unsqueeze(-1)
         
         scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
-        scene_embeddings_list = self.scene_manager.get_graph_obs(self._robot._ALL_INDICES.clone())
-        # print(scene_embeddings_list[0])
-        scene_embeddings_noize = self.scene_manager.add_noise_to_graph_obs(scene_embeddings_list)
-        # print(scene_embeddings_noize[0])
-        scene_embeddings_dict = self.scene_manager.tensorize_graph_obs(scene_embeddings_noize)
+        scene_embeddings_dict = self.scene_manager.get_graph_obs(self._robot._ALL_INDICES.clone())
         # obs = torch.cat([image_embeddings, scene_embeddings, text_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
-        # print(scene_embeddings_dict)
         obs_img = torch.cat([image_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
         obs = {
             "img": obs_img,
@@ -518,7 +509,7 @@ class WheeledRobotEnv(DirectRLEnv):
             )
         reward = (
             IL_reward + punish #* r_error
-            + torch.clamp(goal_reached.float() * 7, min=0, max=15) #* (1 + start_dists) / (1 + path_lengths)
+            + torch.clamp(goal_reached.float() * 7 * (1 - has_contact.float()), min=0, max=15) #* (1 + start_dists) / (1 + path_lengths)
             - torch.clamp(has_contact.float() * (5 + lin_vel_reward), min=0, max=10)
         )
 
@@ -854,13 +845,13 @@ class WheeledRobotEnv(DirectRLEnv):
                     self.turn_on_controller = True
                 
         
-        if (self.mean_radius >= 3.3 or self.mean_radius <= 0.3 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
+        if (self.mean_radius >= 3.3 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
         # if self.use_obstacles or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
             if self.turn_on_obstacles_always and self.cur_step % 300:
                 print("[ WARNING ] ostacles allways turn on")
 
             self.turn_on_obstacles = True
-            if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3 and self.mean_radius == 3.3:
+            if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3:
                 print("level_up min_level_radius to: ", 3.3)
                 self.min_level_radius = 3.3
         else:

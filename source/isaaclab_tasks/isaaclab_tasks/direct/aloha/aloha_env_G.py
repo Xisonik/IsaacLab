@@ -77,7 +77,7 @@ class WheeledRobotEnvCfg(DirectRLEnvCfg):
     num_total_objects = 10
 
     observation_space = gym.spaces.Dict({
-        "img": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(512 + 3,), dtype=np.float32),
+        "img": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(512 + 3 + 90,), dtype=np.float32),
         "graph": gym.spaces.Dict({
             "node_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 14), dtype=np.float32),
             "edge_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 6), dtype=np.float32),
@@ -156,8 +156,8 @@ class WheeledRobotEnv(DirectRLEnv):
         self.config_path=os.path.join(self.current_dir, "source/isaaclab_tasks/isaaclab_tasks/direct/aloha/scene_items.json")
         super().__init__(cfg, render_mode, **kwargs)
         self._super_init = False
-        self.eval = False
-        self.eval_name = "CI"
+        self.eval = True
+        self.eval_name = "CIG_prelust_try"
 
         self.eval_printed = False
         self.scene_manager = SceneManager(self.num_envs, self.config_path, self.device)
@@ -244,11 +244,11 @@ class WheeledRobotEnv(DirectRLEnv):
         self.history_index = 0
         self.history_len = torch.zeros(self.num_envs, device=self.device)
         self._step_update_counter = 0
-        self.mean_radius = 4.3
+        self.mean_radius = 3.3
         self.max_angle_error = torch.pi / 6
         self.cur_angle_error = torch.pi / 12
         self.warm = True
-        self.warm_len = 2500
+        self.warm_len = 4500
         self.without_imitation = self.warm_len / 2
         self._obstacle_update_counter = 0
         self.has_contact = torch.full((self.num_envs,), True, dtype=torch.bool, device=self.device)
@@ -284,14 +284,16 @@ class WheeledRobotEnv(DirectRLEnv):
         self.sr_treshhold = 85
         self.LOG = False
         self.text_embeddings = torch.zeros((self.num_envs, 512), device=self.device)
+        
         if self.LOG:
             from comet_ml import start
             from comet_ml.integration.pytorch import log_model
             self.experiment = start(
-                api_key="DRYfW6B6VtUQr9llvf3jup57R",
-                project_name="general",
-                workspace="xisonik"
+                api_key="e59mAtn77LPWSe4fDND8SnbE9",
+                project_name="aloha-rl",
+                workspace="mrizo-maruf"
             )
+            
         self.print_config_info()
         self._setup_scene()
         self.prim_paths = self.asset_manager.all_prim_paths
@@ -385,7 +387,7 @@ class WheeledRobotEnv(DirectRLEnv):
         scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
         scene_embeddings_dict = self.scene_manager.get_graph_obs(self._robot._ALL_INDICES.clone())
         # obs = torch.cat([image_embeddings, scene_embeddings, text_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
-        obs_img = torch.cat([image_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
+        obs_img = torch.cat([image_embeddings, scene_embeddings,root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
         obs = {
             "img": obs_img,
             "graph": scene_embeddings_dict
@@ -845,17 +847,19 @@ class WheeledRobotEnv(DirectRLEnv):
                     self.turn_on_controller = True
                 
         
-        if (self.mean_radius >= 3.3 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
+        if (self.mean_radius >= 3.3 or self.mean_radius <= 0.3 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
+
         # if self.use_obstacles or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
             if self.turn_on_obstacles_always and self.cur_step % 300:
                 print("[ WARNING ] ostacles allways turn on")
 
             self.turn_on_obstacles = True
-            if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3:
+            if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3 and self.mean_radius == 3.3:
                 print("level_up min_level_radius to: ", 3.3)
                 self.min_level_radius = 3.3
         else:
             self.turn_on_obstacles = False
+            
         env_ids = env_ids.to(dtype=torch.long)
 
         final_distance_to_goal = torch.linalg.norm(
