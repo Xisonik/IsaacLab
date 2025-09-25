@@ -27,7 +27,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.math import subtract_frame_transforms
 from isaaclab.sensors import TiledCamera, TiledCameraCfg, ContactSensor, ContactSensorCfg
-from .scene_manager_img import SceneManager
+from .scene_manager_fixed import SceneManager
 from .evaluation_manager import EvaluationManager
 from .control_manager import VectorizedPurePursuit
 from .path_manager import Path_manager
@@ -382,7 +382,7 @@ class WheeledRobotEnv(DirectRLEnv):
         root_lin_vel_w = torch.norm(self._robot.data.root_lin_vel_w[:, :2], dim=1).unsqueeze(-1)
         root_ang_vel_w = self._robot.data.root_ang_vel_w[:, 2].unsqueeze(-1)
         
-        # scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
+        scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
         scene_embeddings_dict = self.scene_manager.get_graph_obs(self._robot._ALL_INDICES.clone())
         # obs = torch.cat([image_embeddings, scene_embeddings, text_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
         obs_img = torch.cat([image_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
@@ -499,18 +499,18 @@ class WheeledRobotEnv(DirectRLEnv):
         start_dists = self.eval_manager.get_start_dists(env_ids)
         if self.turn_on_controller:
             IL_reward = 0.5
-            punish = 0
+            punish = - 0.05
         else:
             IL_reward = 0
             punish = (
-                - 0.07
+                - 0.1
                 - ang_vel_reward / (1 + 2 * self.mean_radius)
                 + lin_vel_reward / (1 + 2 * self.mean_radius)
             )
         reward = (
             IL_reward + punish #* r_error
             + torch.clamp(goal_reached.float() * 7 * (1 - has_contact.float()), min=0, max=15) #* (1 + start_dists) / (1 + path_lengths)
-            - torch.clamp(has_contact.float() * (5 + lin_vel_reward + ang_vel_reward), min=0, max=10)
+            - torch.clamp(has_contact.float() * (5 + lin_vel_reward), min=0, max=10)
         )
 
         if torch.any(has_contact) or torch.any(goal_reached) or torch.any(time_out):

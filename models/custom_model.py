@@ -35,8 +35,10 @@ class CustomActor(GaussianMixin, Model):
         self.num_observations = self.img_dim# + (self.num_objects * self.node_dim) + (self.num_objects * self.edge_dim)
         self.net = nn.Sequential(
             nn.Linear(self.num_observations, 512),  # Теперь 72
+            nn.LayerNorm(512),
             nn.ELU(),
             nn.Linear(512, 256),
+            nn.LayerNorm(256),
             nn.ELU(),
             nn.Linear(256, self.num_actions),
             nn.Tanh()
@@ -53,7 +55,7 @@ class CustomActor(GaussianMixin, Model):
             inputs_unflatten["graph"]["node_features"].reshape(-1, self.num_objects * self.node_dim),  # (num_envs, 10)
             inputs_unflatten["graph"]["edge_features"].reshape(-1, self.num_objects * self.edge_dim),  # (num_envs, 5)
         ], dim=-1)
-        inputs_final = inputs_unflatten["img"]
+        inputs_final = x
         return self.net(inputs_final), self.log_std_parameter, {}
 
 class CustomCritic(DeterministicMixin, Model):
@@ -70,12 +72,17 @@ class CustomCritic(DeterministicMixin, Model):
         # Общее количество элементов
         self.num_observations = self.img_dim# + (self.num_objects * self.node_dim) + (self.num_objects * self.edge_dim)
         self.num_actions = self.num_actions
+        dropout_p=0.2
         self.net = nn.Sequential(
-            nn.Linear(self.num_observations + self.num_actions, 256),  # 72 + 8 = 80
+            nn.Linear(self.num_observations + self.num_actions, 512),  # 72 + 8 = 80
+            nn.LayerNorm(512),
             nn.ELU(),
-            nn.Linear(256, 128),
+            nn.Dropout(dropout_p),
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),
             nn.ELU(),
-            nn.Linear(128, 1)
+            nn.Dropout(dropout_p),
+            nn.Linear(256, 1)
         ).to(device)
 
     def compute(self, inputs, role):
@@ -86,5 +93,5 @@ class CustomCritic(DeterministicMixin, Model):
             inputs_unflatten["graph"]["node_features"].reshape(-1, self.num_objects * self.node_dim),  # (num_envs, 10)
             inputs_unflatten["graph"]["edge_features"].reshape(-1, self.num_objects * self.edge_dim),  # (num_envs, 5)
         ], dim=-1)
-        inputs_final = torch.cat([inputs_unflatten["img"], inputs["taken_actions"]], dim=-1)  # (num_envs, 60)
+        inputs_final = torch.cat([x, inputs["taken_actions"]], dim=-1)  # (num_envs, 60)
         return self.net(inputs_final), {}

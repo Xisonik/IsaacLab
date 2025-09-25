@@ -2,9 +2,11 @@ import torch
 import math
 import random
 import json
+import numpy as np
 from collections import defaultdict
 from tabulate import tabulate
 import importlib.util
+
 # Импортируем обновленные, векторизованные стратегии
 # from .placement_strategies import PlacementStrategy, GridPlacement, OnSurfacePlacement # Эти классы остаются как в предыдущем ответе
 def import_class_from_path(module_path, class_name):
@@ -66,8 +68,7 @@ class SceneManager:
         self.discrete_angles = torch.arange(0, 2 * math.pi, angle_step, device=self.device)
         self.candidate_vectors = torch.stack([torch.cos(self.discrete_angles), torch.sin(self.discrete_angles)], dim=1)
         # Assign object IDs based on name
-
-    
+           
     def update_prims(self):
         pass
     
@@ -103,7 +104,6 @@ class SceneManager:
         # for i in env_ids:
         #     self.print_graph_info(i)
         self.chose_active_goal_state(env_ids)
-
 
     def _initialize_object_data(self):
         """Заполняет метаданные об объектах и их начальные/дефолтные состояния."""
@@ -213,7 +213,7 @@ class SceneManager:
             num_providers_to_place = (low_bound + rand_float * (high_bound - low_bound)).long()
         else:
             num_providers_to_place = torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
-        num_floor_obstacles_to_place = torch.randint(2, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
+        num_floor_obstacles_to_place = torch.randint(1, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
         num_static_floor_obstacles_to_place = torch.randint(0, num_static_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_static_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
 
         # 3. Применение стратегий в правильном порядке (сначала поверхности)
@@ -485,9 +485,8 @@ class SceneManager:
             for i in env_ids:
                 self.print_graph_info(i)
 
-    def get_graph_obs(self, env_ids=None) -> dict[str, torch.Tensor]:
+    def get_graph_obs(self, env_ids=None):
         """Returns a dictionary with full tensorized graph representation for observations.
-        
         - node_features: tensor (num_envs, num_objects, 14) - per object: [pos(3), size(3), radius(1), color(3), id(1), active(1), parent_id(1), level(1)].
         - edge_features: tensor (num_envs, num_objects, 6) - per possible edge (from child to parent): [exists(1), z_diff(1), level_diff(1), dist(1), color_diff_norm(1), id_diff(1)]; 0 if no edge.
         """

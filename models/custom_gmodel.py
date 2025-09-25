@@ -26,7 +26,8 @@ class CustomActor(GaussianMixin, Model):
         GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std)
         self.observation_space = observation_space
         # Вычисляем размеры
-        self.img_dim = observation_space["img"].shape[0]  # 36
+        self.img_dim = 515 + 90 #observation_space["img"].shape[0]  # 36
+        print("im dim:", self.img_dim, observation_space["img"].shape[0])
         self.num_objects = observation_space["graph"]["node_features"].shape[0]  # num_total_objects, e.g., 10
         self.node_dim = observation_space["graph"]["node_features"].shape[1]  # 14
         self.edge_dim = observation_space["graph"]["edge_features"].shape[1]  # 6
@@ -64,7 +65,7 @@ class CustomCritic(DeterministicMixin, Model):
         DeterministicMixin.__init__(self, clip_actions)
         self.observation_space = observation_space
         # Вычисляем размеры
-        self.img_dim = observation_space["img"].shape[0]  # 36
+        self.img_dim = 515+90 #observation_space["img"].shape[0]  # 36
         self.num_objects = observation_space["graph"]["node_features"].shape[0]  # num_total_objects, e.g., 10
         self.node_dim = observation_space["graph"]["node_features"].shape[1]  # 14
         self.edge_dim = observation_space["graph"]["edge_features"].shape[1]  # 6

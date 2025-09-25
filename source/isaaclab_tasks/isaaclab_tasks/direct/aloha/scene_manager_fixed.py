@@ -213,7 +213,7 @@ class SceneManager:
             num_providers_to_place = (low_bound + rand_float * (high_bound - low_bound)).long()
         else:
             num_providers_to_place = torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
-        num_floor_obstacles_to_place = torch.randint(2, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
+        num_floor_obstacles_to_place = torch.randint(0, num_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
         num_static_floor_obstacles_to_place = torch.randint(0, num_static_floor_obs + 1, (num_to_randomize,), device=self.device) if use_obstacles and num_static_floor_obs > 0 else torch.zeros(num_to_randomize, dtype=torch.long, device=self.device)
 
         # 3. Применение стратегий в правильном порядке (сначала поверхности)

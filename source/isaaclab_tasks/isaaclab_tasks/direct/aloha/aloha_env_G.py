@@ -27,7 +27,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.math import subtract_frame_transforms
 from isaaclab.sensors import TiledCamera, TiledCameraCfg, ContactSensor, ContactSensorCfg
-from .scene_manager import SceneManager
+from .scene_manager_fixed import SceneManager
 from .evaluation_manager import EvaluationManager
 from .control_manager import VectorizedPurePursuit
 from .path_manager import Path_manager
@@ -83,6 +83,7 @@ class WheeledRobotEnvCfg(DirectRLEnvCfg):
             "edge_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 6), dtype=np.float32),
         })
     })
+    print(observation_space["img"].shape[0])
     state_space = 0
     debug_vis = False
 
@@ -156,7 +157,7 @@ class WheeledRobotEnv(DirectRLEnv):
         self.config_path=os.path.join(self.current_dir, "source/isaaclab_tasks/isaaclab_tasks/direct/aloha/scene_items.json")
         super().__init__(cfg, render_mode, **kwargs)
         self._super_init = False
-        self.eval = True
+        self.eval = False
         self.eval_name = "CIG_prelust_try"
 
         self.eval_printed = False
