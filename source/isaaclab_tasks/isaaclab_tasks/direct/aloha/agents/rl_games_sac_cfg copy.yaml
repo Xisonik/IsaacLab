@@ -1,0 +1,55 @@
+params:
+  seed: 100
+
+  # environment wrapper clipping
+  env:
+    clip_actions: 1.0
+
+  algo:
+    name: sac
+
+  model:
+    name: soft_actor_critic
+
+  network:
+    name: soft_actor_critic
+    separate: True
+    log_std_bounds: [-5, 2]  # Ограничения на логарифм стандартного отклонения
+    space:
+      continuous:
+        log_std_bounds: [-5, 2]  # ,skj -5 2
+    mlp:
+      units: [256, 128, 64] #, 64]  # ,skj 64 64
+      activation: relu
+      initializer:
+        name: default
+
+  load_checkpoint: False  # Флаг для загрузки чекпоинта
+  load_path: ''  # Путь к чекпоинту
+
+  config:
+    name: WheeledRobotEnv_SAC  # Имя эксперимента
+    activate_contact_sensors: True
+    env_name: rlgpu  # Используем rlgpu для Isaac Lab
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    normalize_input: True
+    reward_shaper:
+      scale_value: 0.1
+    max_epochs: 150000
+    num_steps_per_episode: 8
+    save_best_after: 100
+    save_frequency: 250
+    gamma: 0.99
+    init_alpha: 0.5
+    alpha_lr: 0.0001
+    actor_lr: 0.0003
+    critic_lr: 0.0003
+    critic_tau: 0.005
+    batch_size: 512
+    learnable_temperature: true
+    num_warmup_steps: 512
+    replay_buffer_size: 100000
+    env_config:
+      env_name: WheeledRobotEnv  

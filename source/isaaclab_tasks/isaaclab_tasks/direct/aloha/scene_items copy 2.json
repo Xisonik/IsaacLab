@@ -1,0 +1,82 @@
+{
+  "objects": [
+    {
+      "name": "table",
+      "info": {
+          "color": "",
+          "add_info": [],
+          "position": []
+        },
+      "type": ["static_obstacle", "surface_provider", "changeable_color"],
+      "count": 3,
+      "size": [0.5, 0.5, 0.75],
+      "usd_paths": ["scenes/scenes_sber_kitchen_for_BBQ/table/table.usd"]
+    },
+    {
+      "name": "chair",
+      "info": {
+          "color": "",
+          "add_info": [],
+          "position": []
+        },
+      "type": ["movable_obstacle"],
+      "count": 3,
+      "size": [0.4, 0.4, 0.9],
+      "usd_paths": ["scenes/obstacles/chair2.usd"]
+    },
+    {
+      "name": "cabinet",
+      "info": {
+          "color": "",
+          "add_info": [],
+          "position": []
+        },
+      "type": ["staff_obstacle"],
+      "count": 3,
+      "size": [0.4, 0.4, 0.9],
+      "usd_paths": ["scenes/obstacles/cabinet.usd"]
+    },
+    {
+      "name": "bowl",
+      "info": {
+          "color": "",
+          "add_info": [],
+          "position": []
+        },
+      "type": ["possible_goal", "surface_only"],
+      "count": 1,
+      "size": [0.15, 0.15, 0.05],
+      "usd_paths": ["objects/bowl.usd"]
+    }
+  ],
+  "type_placements": {
+    "surface_provider": {
+      "strategy": "grid",
+      "grid_coordinates": [
+        [-4.5, -1.1, 0.0],
+        [-4.5,  0.0,  0.0],
+        [-4.5,  1.1,  0.0]
+      ]
+    },
+    "movable_obstacle": {
+      "strategy": "grid",
+      "grid_coordinates": [
+        [-2.2, -1.1, 0.0],
+        [-2.2,  0.0,  0.0],
+        [-2.2,  1.1,  0.0]
+      ]
+    },
+    "staff_obstacle": {
+      "strategy": "grid",
+      "grid_coordinates": [
+        [-0.5, -3.2, 0.0], [-2.0, -3.2, 0.0], [-3.5, -3.2, 0.0],
+        [-0.5,  3.2, 0.0], [-2.0,  3.2, 0.0], [-3.5,  3.2, 0.0]
+      ]
+    },
+    "surface_only": {
+      "strategy": "on_surface",
+      "surface_types": ["surface_provider"],
+      "margin": 0.1
+    }
+  }
+}

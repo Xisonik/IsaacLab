@@ -1,0 +1,73 @@
+seed: 42
+
+# Models configuration, mapped from rl_games model and network sections
+models:
+  separate: False  # matches rl_games network.separate: False
+  policy:
+    class: GaussianMixin
+    clip_actions: True  # matches rl_games env.clip_actions: 1.0
+    clip_log_std: True
+    min_log_std: -20.0
+    max_log_std: 2.0
+    initial_log_std: 0.0  # matches rl_games network.sigma_init.val: 0
+    fixed_log_std: True  # matches rl_games network.fixed_sigma: True
+    network:
+      - name: net
+        input: STATES
+        layers: [512]  # matches rl_games network.mlp.units: [512]
+        activations: elu  # matches rl_games network.mlp.activation: elu
+    output: ACTIONS
+  value:
+    class: DeterministicMixin
+    clip_actions: False
+    network:
+      - name: net
+        input: STATES
+        layers: [512]  # matches rl_games network.mlp.units: [512]
+        activations: elu  # matches rl_games network.mlp.activation: elu
+    output: ONE
+
+# Rollout memory, configured to match rl_games horizon_length
+memory:
+  class: RandomMemory 
+  memory_size: 32  # matches rl_games config.horizon_length: 32
+
+# PPO agent configuration, mapped from rl_games config
+agent:
+  class: PPO
+  rollouts: 32  # matches rl_games config.horizon_length: 32
+  learning_epochs: 16  # matches rl_games config.mini_epochs: 16
+  mini_batches: 8  # derived from rl_games config.minibatch_size: 256 (assuming 2048 samples / 256 = 8 mini-batches)
+  discount_factor: 0.99  # matches rl_games config.gamma: 0.99
+  lambda: 0.95  # matches rl_games config.tau: 0.95
+  learning_rate: 1.0e-04  # matches rl_games config.learning_rate: 1e-4
+  learning_rate_scheduler: KLAdaptiveLR  # matches rl_games config.lr_schedule: adaptive
+  learning_rate_scheduler_kwargs:
+    kl_threshold: 0.008  # matches rl_games config.kl_threshold: 0.008
+  state_preprocessor: RunningStandardScaler  # matches rl_games config.normalize_input: False (RunningStandardScaler is default in skrl)
+  state_preprocessor_kwargs: null
+  value_preprocessor: RunningStandardScaler  # matches rl_games config.normalize_value: True
+  value_preprocessor_kwargs: null
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 1.0  # matches rl_games config.grad_norm: 1.0
+  ratio_clip: 0.2  # matches rl_games config.e_clip: 0.2
+  value_clip: True  # matches rl_games config.clip_value: True
+  clip_predicted_values: True
+  entropy_loss_scale: 0.0  # matches rl_games config.entropy_coef: 0.0
+  value_loss_scale: 2.0  # matches rl_games config.critic_coef: 2
+  kl_threshold: 0.008  # matches rl_games config.kl_threshold: 0.008
+  rewards_shaper_scale: 1.0  # matches rl_games config.reward_shaper.scale_value: 1.0
+  time_limit_bootstrap: False
+  # logging and checkpoint, mapped from rl_games config
+  experiment:
+    directory: "aloha"  # matches rl_games config.name: aloha
+    experiment_name: ""
+    write_interval: 200  # matches rl_games config.save_frequency: 25
+    checkpoint_interval: 500  # matches rl_games config.save_best_after: 50
+
+# Sequential trainer, mapped from rl_games config
+trainer:
+  class: SequentialTrainer
+  timesteps: 160000000  # derived from rl_games config.max_epochs: 5000 * config.horizon_length: 32 * num_actors (assuming num_actors=1000 for approximation)
+  environment_info: log
