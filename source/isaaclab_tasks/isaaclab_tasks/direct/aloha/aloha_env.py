@@ -260,7 +260,7 @@ class WheeledRobotEnv(DirectRLEnv):
         self.history_len = torch.zeros(self.num_envs, device=self.device)
         self._step_update_counter = 0
         self.mean_radius = 4.3
-        self.max_angle_error = torch.pi / 6
+        self.max_angle_error = 0.8 * torch.pi
         self.cur_angle_error = torch.pi / 12
         self.warm = True
         self.warm_len = 900
@@ -1094,7 +1094,7 @@ class WheeledRobotEnv(DirectRLEnv):
                     self.success_ep_num = 0
                     old_mr = self.mean_radius
                     old_a = self.cur_angle_error
-                    self.cur_angle_error += self.max_angle_error / 2
+                    self.cur_angle_error += self.max_angle_error / 4
                     print("[ sr ]: ", round(self.success_rate, 2), self.sr_stack_capacity)
                     if self.cur_angle_error > self.max_angle_error:
                         self.cur_angle_error = 0
