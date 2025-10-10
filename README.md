@@ -65,5 +65,5 @@ Asset directories should look like this by the path IsaacLab/source/isaaclab_ass
             ├── kitchen_new_simple.usd
             └── table
 ```
-
+And folder "data" to "IsaacLab/"
 Also it is nessesery replace the folder "skrl" on the path miniconda3/envs/env_isaaclab/lib/python3.10/site-packages to "skrl" in pipeline

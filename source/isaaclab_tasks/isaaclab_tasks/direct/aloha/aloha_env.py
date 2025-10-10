@@ -90,7 +90,7 @@ class WheeledRobotEnvCfg(DirectRLEnvCfg):
     num_total_objects = 36 #10
 
     observation_space = gym.spaces.Dict({
-        "img": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(512 + 512 +  3,), dtype=np.float32),
+        "img": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(512 + 512 + num_total_objects * 9 + 3,), dtype=np.float32),
         "graph": gym.spaces.Dict({
             "node_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 14), dtype=np.float32),
             "edge_features": gym.spaces.Box(low=-float("inf"), high=float("inf"), shape=(num_total_objects, 6), dtype=np.float32),
@@ -436,7 +436,7 @@ class WheeledRobotEnv(DirectRLEnv):
         root_lin_vel_w = torch.norm(self._robot.data.root_lin_vel_w[:, :2], dim=1).unsqueeze(-1)
         root_ang_vel_w = self._robot.data.root_ang_vel_w[:, 2].unsqueeze(-1)
 
-        # scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
+        scene_embeddings = self.scene_manager.get_graph_embedding(self._robot._ALL_INDICES.clone())
         if self.DEBUG_TIME:
             gr_start_time = time.time()
         scene_embeddings_dict = self.scene_manager.get_graph_obs(self._robot._ALL_INDICES.clone())
@@ -445,7 +445,7 @@ class WheeledRobotEnv(DirectRLEnv):
         # obs = torch.cat([image_embeddings, scene_embeddings, text_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
         # print("2: ", len(image_embeddings), root_lin_vel_w)
 
-        obs_img = torch.cat([image_embeddings, self.text_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
+        obs_img = torch.cat([image_embeddings, self.text_embeddings, scene_embeddings, root_lin_vel_w*0.1, root_ang_vel_w*0.1, self.previous_ang_vel.unsqueeze(-1)*0.1], dim=-1)
         obs = {
             "img": obs_img,
             "graph": scene_embeddings_dict
@@ -898,15 +898,15 @@ class WheeledRobotEnv(DirectRLEnv):
                     self.turn_on_controller = True
                 
         
-        if (self.mean_radius >= 3.3 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
+        if (self.mean_radius >= 0 and self.use_obstacles) or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
         # if self.use_obstacles or self.turn_on_obstacles_always or self.warm and not self.first_ep[0]:
             if self.turn_on_obstacles_always and self.cur_step % 300:
                 print("[ WARNING ] ostacles allways turn on")
 
             self.turn_on_obstacles = True
-            if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3:
-                print("level_up min_level_radius to: ", 3.3)
-                self.min_level_radius = 3.3
+            # if not self.turn_on_obstacles_always and not self.warm and self.min_level_radius < 3.3:
+            #     print("level_up min_level_radius to: ", 3.3)
+            #     self.min_level_radius = 3.3
         else:
             self.turn_on_obstacles = False
         env_ids = env_ids.to(dtype=torch.long)

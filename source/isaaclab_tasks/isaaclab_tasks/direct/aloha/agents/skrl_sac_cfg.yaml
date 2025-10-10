@@ -29,11 +29,11 @@ models:
 
 memory:
   class: RandomMemory
-  memory_size: 10000
+  memory_size: 15000
 
 agent:
   class: SAC
-  gradient_steps: 4
+  gradient_steps: 1
   batch_size: 512
 
   discount_factor: 0.99
@@ -59,12 +59,12 @@ agent:
     directory: 'aloha'
     experiment_name: 'SAC'
     write_interval: 200
-    checkpoint_interval: 1000
+    checkpoint_interval: 10000
 
 
 # Sequential trainer
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 80000
+  timesteps: 800000
   environment_info: log
