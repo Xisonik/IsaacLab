@@ -11,6 +11,8 @@ The installation process fully complies with the official Isaac Lab documentatio
 The launch is carried out in accordance with the official documentation. The name of the environment - Isaac-Aloha-Direct-v0
 The SAC algorithm of the skrl library is used here.
 
+For Imitation Learning to work correctly, you need to transfer and copy the contents of the skrl folder to the appropriate folder using the approximate path "/home/${HOME}/miniconda3/envs/env_isaaclab/lib/python3.10/site-packages/skrl"
+
 Train:
 ```
 ./isaaclab.sh -p scripts/reinforcement_learning/skrl/train.py --task Isaac-Aloha-Direct-v0 --num_envs 32 --enable_cameras --headless
